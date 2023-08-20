@@ -27,7 +27,5 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 		pool.submit(std::move(task2));
 	}
 
-	pool.stop();
-
 	return 0;
 }

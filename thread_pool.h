@@ -33,7 +33,7 @@ public:
 	}
 private:
 	std::queue<T> s_q;
-	mutable std::mutex q_mut;
+	std::mutex q_mut;
 	std::condition_variable q_cv;
 };
 
@@ -47,9 +47,7 @@ public:
 
 	thread_pool() {
 		for (unsigned int i = 0; i < std::thread::hardware_concurrency(); ++i)
-		{
 			thrds.push_back(std::thread([this]() { work(); }));
-		}
 	}
 	~thread_pool() {
 		for (auto& th : thrds)
@@ -60,23 +58,15 @@ public:
 		work_q.push(std::move(task));
 		cv.notify_one();
 	}
-
-	void stop() {
-		std::lock_guard guard(mut);
-		pursue.store(false);
-	}
 private:
 	void work() {
-		while (pursue.load()) {
+		while (true) {
 			std::unique_lock lk(mut);
 			cv.wait(lk);
-			if (!work_q.empty()) {
-				auto foo = work_q.pop();
-				foo();
-			}
-			else {
-				std::this_thread::yield();
-			}
+			auto foo = work_q.pop();
+			foo();
+
+			if (work_q.empty()) break;
 		}
 	}
 
@@ -84,5 +74,4 @@ private:
 	safe_queue<T> work_q;
 	std::mutex mut;
 	std::condition_variable cv;
-	std::atomic<bool> pursue{true};
 };
