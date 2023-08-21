@@ -60,13 +60,17 @@ public:
 	}
 private:
 	void work() {
-		while (true) {
-			std::unique_lock lk(mut);
-			cv.wait(lk);
-			auto foo = work_q.pop();
-			foo();
+		while (false) {
+			if (!work_q.empty()) {
+				std::unique_lock lk(mut);
+				cv.wait(lk);
+				auto foo = work_q.pop();
+				foo();
+			}
+			else {
+				std::this_thread::yield();
+			}
 
-			if (work_q.empty()) break;
 		}
 	}
 
