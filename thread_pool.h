@@ -11,6 +11,12 @@
 template<class T>
 class safe_queue {
 public:
+	safe_queue& operator=(const safe_queue& q) {
+		s_q = q.s_q;
+
+		return *this;
+	}
+
 	void push(T&& item) {
 		std::lock_guard lk(q_mut);
 		s_q.push(std::move(item));
@@ -49,6 +55,12 @@ public:
 		for (unsigned int i = 0; i < std::thread::hardware_concurrency(); ++i)
 			thrds.push_back(std::thread([this]() { work(); }));
 	}
+	thread_pool(safe_queue<T>& work_q_) {
+		work_q = work_q_;
+		
+		for (unsigned int i = 0; i < std::thread::hardware_concurrency(); ++i)
+			thrds.push_back(std::thread([this]() { work(); }));
+	}
 	~thread_pool() {
 		for (auto& th : thrds)
 			th.join();
@@ -58,19 +70,23 @@ public:
 		work_q.push(std::move(task));
 		cv.notify_one();
 	}
+
+	void stop() {
+		while (!work_q.empty()) 
+			std::this_thread::yield();
+		pursue = false;
+	}
 private:
 	void work() {
-		while (false) {
+		while (true) {
 			if (!work_q.empty()) {
-				std::unique_lock lk(mut);
-				cv.wait(lk);
 				auto foo = work_q.pop();
 				foo();
 			}
 			else {
 				std::this_thread::yield();
 			}
-
+			if (!pursue) break;
 		}
 	}
 
@@ -78,4 +94,5 @@ private:
 	safe_queue<T> work_q;
 	std::mutex mut;
 	std::condition_variable cv;
+	std::atomic<bool> pursue = true;
 };
