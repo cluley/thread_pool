@@ -1,47 +1,10 @@
 #pragma once
 
-#include <thread>
-#include <mutex>
-#include <condition_variable>
 #include <atomic>
-#include <queue>
 #include <vector>
-#include <functional>
+#include <thread>
 
-template<class T>
-class safe_queue {
-public:
-	safe_queue& operator=(const safe_queue& q) {
-		s_q = q.s_q;
-
-		return *this;
-	}
-
-	void push(T&& item) {
-		std::lock_guard lk(q_mut);
-		s_q.push(std::move(item));
-		q_cv.notify_all();
-	}
-
-	T pop() {
-		std::unique_lock lk(q_mut);
-		q_cv.wait(lk, [&] { return !s_q.empty(); });
-
-		T item = std::move(s_q.front());
-		s_q.pop();
-
-		return std::move(item);
-	}
-
-	bool empty() {
-		std::lock_guard lk(q_mut);
-		return s_q.empty();
-	}
-private:
-	std::queue<T> s_q;
-	std::mutex q_mut;
-	std::condition_variable q_cv;
-};
+#include "safe_queue.h"
 
 template<class T>
 class thread_pool {
@@ -52,47 +15,58 @@ public:
 	thread_pool& operator=(thread_pool&&) = delete;
 
 	thread_pool() {
-		for (unsigned int i = 0; i < std::thread::hardware_concurrency(); ++i)
-			thrds.push_back(std::thread([this]() { work(); }));
+		const unsigned cores = std::thread::hardware_concurrency();
+
+		try {
+			for (unsigned i = 0; i < cores; ++i)
+				thrds.push_back(std::thread(&thread_pool::work, this));
+		}
+		catch (...)
+		{
+			pursue = false;
+			throw;
+		}
 	}
-	thread_pool(safe_queue<T>& work_q_) {
-		work_q = work_q_;
-		
-		for (unsigned int i = 0; i < std::thread::hardware_concurrency(); ++i)
-			thrds.push_back(std::thread([this]() { work(); }));
-	}
+
 	~thread_pool() {
+		pursue = false;
+
 		for (auto& th : thrds)
-			th.join();
+			if(th.joinable())
+				th.join();
 	}
 
 	void submit(T&& task) {
 		work_q.push(std::move(task));
-		cv.notify_one();
 	}
 
 	void stop() {
-		while (!work_q.empty()) 
-			std::this_thread::yield();
+		while (!work_q.empty()) {
+			std::this_thread::sleep_for(150ms);
+			continue;
+		}
 		pursue = false;
 	}
 private:
+	using func = std::function<void()>;
 	void work() {
-		while (true) {
-			if (!work_q.empty()) {
-				auto foo = work_q.pop();
-				foo();
+		while (pursue) 
+		{
+			std::shared_ptr<func> foo{ nullptr };
+			foo = work_q.try_pop();
+			if (foo) 
+			{
+				(*foo)();
 			}
-			else {
+			else 
+			{
 				std::this_thread::yield();
 			}
-			if (!pursue) break;
 		}
 	}
 
 	std::vector<std::thread> thrds;
-	safe_queue<T> work_q;
+	safeQueue<T> work_q;
 	std::mutex mut;
-	std::condition_variable cv;
 	std::atomic<bool> pursue = true;
 };

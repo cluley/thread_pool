@@ -5,4 +5,4 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 project(thread_pool)
 
-add_executable(thread_pool main.cpp thread_pool.h)
+add_executable(thread_pool main.cpp thread_pool.h safe_queue.h)
